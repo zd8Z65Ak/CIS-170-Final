@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vector Practice</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Vector Practice</h1>
+      <p class="tagline">Answer quick questions on 2D vectors.</p>
+    </header>
+
+    <main>
+      <section class="controls">
+        <div class="control-group">
+          <h2>Question Type</h2>
+          <div class="muted">Mixed (random): Q = P + v or P = Q − v</div>
+        </div>
+
+        <!-- Difficulty fixed to medium; selector removed. -->
+
+        <div class="actions">
+          <button id="next-btn">Next Question</button>
+          <button id="submit-btn" class="primary">Submit Answer</button>
+          <button id="reveal-btn">Show Solution</button>
+        </div>
+
+        <div class="scoreboard">
+          <span id="score">Score: 0/0</span>
+          <span id="streak">Streak: 0</span>
+        </div>
+      </section>
+
+      <section class="question-panel">
+        <div id="question-text" class="question-text">Click "Next Question" to begin.</div>
+        <div class="graph-wrap">
+          <canvas id="graph" width="720" height="520" aria-label="Vector graph"></canvas>
+          <div class="graph-hint">Tip: For coordinate answers, click the graph to fill inputs.</div>
+        </div>
+
+        <form id="answer-form" class="answer-form" autocomplete="off">
+          <!-- dynamic answer inputs go here -->
+        </form>
+
+        <div id="feedback" class="feedback" aria-live="polite"></div>
+        <div id="solution" class="solution"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>
+        Built for quick practice. Answers accept a small tolerance for decimals.
+      </small>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+  </html>
