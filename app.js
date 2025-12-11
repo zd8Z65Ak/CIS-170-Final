@@ -54,6 +54,8 @@
     return nearlyEqual(a, c, tol) && nearlyEqual(b, d, tol);
   }
 
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
   // Graph utilities for drawing axes, points, and vectors
   const Graph = (() => {
     function create(canvas) {
@@ -170,9 +172,49 @@
 
   // Question generators return { prompt, answer, answerShape, explain }
   const generators = {
+    // Pick a vector v so that Q = P + v stays within [-10,10] on both axes
+    pickVectorKeepingQInBounds(r, P) {
+      if (r.type === 'int') {
+        const vxMin = Math.max(r.min, Math.ceil(-10 - P[0]));
+        const vxMax = Math.min(r.max, Math.floor(10 - P[0]));
+        const vyMin = Math.max(r.min, Math.ceil(-10 - P[1]));
+        const vyMax = Math.min(r.max, Math.floor(10 - P[1]));
+        const vx = vxMin <= vxMax ? rand.int(vxMin, vxMax) : 0;
+        const vy = vyMin <= vyMax ? rand.int(vyMin, vyMax) : 0;
+        return [vx, vy];
+      } else {
+        const vxMin = Math.max(r.min, -10 - P[0]);
+        const vxMax = Math.min(r.max, 10 - P[0]);
+        const vyMin = Math.max(r.min, -10 - P[1]);
+        const vyMax = Math.min(r.max, 10 - P[1]);
+        const vx = vxMin <= vxMax ? rand.float(vxMin, vxMax, 1) : 0;
+        const vy = vyMin <= vyMax ? rand.float(vyMin, vyMax, 1) : 0;
+        return [vx, vy];
+      }
+    },
+    // Pick a vector v so that P = Q - v stays within [-10,10] on both axes
+    pickVectorKeepingPInBoundsGivenQ(r, Q) {
+      if (r.type === 'int') {
+        const vxMin = Math.max(r.min, Math.ceil(Q[0] - 10));
+        const vxMax = Math.min(r.max, Math.floor(Q[0] + 10));
+        const vyMin = Math.max(r.min, Math.ceil(Q[1] - 10));
+        const vyMax = Math.min(r.max, Math.floor(Q[1] + 10));
+        const vx = vxMin <= vxMax ? rand.int(vxMin, vxMax) : 0;
+        const vy = vyMin <= vyMax ? rand.int(vyMin, vyMax) : 0;
+        return [vx, vy];
+      } else {
+        const vxMin = Math.max(r.min, Q[0] - 10);
+        const vxMax = Math.min(r.max, Q[0] + 10);
+        const vyMin = Math.max(r.min, Q[1] - 10);
+        const vyMax = Math.min(r.max, Q[1] + 10);
+        const vx = vxMin <= vxMax ? rand.float(vxMin, vxMax, 1) : 0;
+        const vy = vyMin <= vyMax ? rand.float(vyMin, vyMax, 1) : 0;
+        return [vx, vy];
+      }
+    },
     terminalFromInitialAndVector(r) {
       const P = [rndNum(r), rndNum(r)];
-      const v = [rndNum(r), rndNum(r)];
+      const v = generators.pickVectorKeepingQInBounds(r, P);
       const Q = [Number((P[0] + v[0]).toFixed(3)), Number((P[1] + v[1]).toFixed(3))];
       return {
         kind: 'terminalFromInitialAndVector',
@@ -180,12 +222,13 @@
         answer: Q,
         answerShape: 'pair',
         explain: `Q = P + v = (${P[0]} + ${v[0]}, ${P[1]} + ${v[1]}) = ${fmtPoint(Q)}.`,
-        draw: { points: [{ p: P, label: 'P' }], arrows: [{ from: P, to: Q }] },
+        // Do not reveal Q; show only initial point P
+        draw: { points: [{ p: P, label: 'P' }] },
       };
     },
     initialFromTerminalAndVector(r) {
       const Q = [rndNum(r), rndNum(r)];
-      const v = [rndNum(r), rndNum(r)];
+      const v = generators.pickVectorKeepingPInBoundsGivenQ(r, Q);
       const P = [Number((Q[0] - v[0]).toFixed(3)), Number((Q[1] - v[1]).toFixed(3))];
       return {
         kind: 'initialFromTerminalAndVector',
@@ -193,8 +236,8 @@
         answer: P,
         answerShape: 'pair',
         explain: `P = Q - v = (${Q[0]} - ${v[0]}, ${Q[1]} - ${v[1]}) = ${fmtPoint(P)}.`,
-        // For this type, do NOT draw the unknown P. Show Q and the vector v from the origin.
-        draw: { points: [{ p: Q, label: 'Q' }], arrows: [{ from: [0,0], to: v }] },
+        // For this type, do NOT draw the unknown P. Show Q only.
+        draw: { points: [{ p: Q, label: 'Q' }] },
       };
     },
   };
@@ -205,6 +248,7 @@
     streak: 0,
     current: null,
     graph: null,
+    selected: null,
   };
 
   function selectedTypes() {
@@ -255,6 +299,7 @@
     const gen = generators[choice(types)];
     const q = gen(r);
     state.current = q;
+    state.selected = null;
     els.qText.textContent = q.prompt;
     buildInputs(q.answerShape);
     els.feedback.className = 'feedback';
@@ -340,7 +385,9 @@
     const scene = [];
     if (q.draw) {
       (q.draw.points || []).forEach(d => scene.push({ type: 'point', p: d.p, label: d.label, color: '#38bdf8' }));
-      (q.draw.arrows || []).forEach(d => scene.push({ type: 'arrow', from: d.from, to: d.to, color: '#22c55e' }));
+    }
+    if (Array.isArray(state.selected)) {
+      scene.push({ type: 'point', p: state.selected, label: 'Your answer', color: '#f59e0b' });
     }
     state.graph.renderScene(scene);
   }
@@ -355,16 +402,35 @@
       const [xw, yw] = state.graph.screenToWorld(px, py);
       if (state.current && state.current.answerShape === 'pair') {
         const snap = (v) => Math.round(v * 2) / 2;
-        const x = snap(xw), y = snap(yw);
+        const x = clamp(snap(xw), -10, 10), y = clamp(snap(yw), -10, 10);
         const xEl = document.getElementById('ans-x');
         const yEl = document.getElementById('ans-y');
         if (xEl) xEl.value = String(x);
         if (yEl) yEl.value = String(y);
+        state.selected = [x, y];
+        drawQuestionGraph(state.current);
       }
     });
     state.graph.setBounds({ xMin: -10, xMax: 10, yMin: -10, yMax: 10 });
     state.graph.renderScene([]);
   }
+
+  // Keep the selected dot in sync with typed input values
+  els.form.addEventListener('input', () => {
+    const xEl = document.getElementById('ans-x');
+    const yEl = document.getElementById('ans-y');
+    if (!xEl || !yEl) return;
+    const x = parseFloat(xEl.value);
+    const y = parseFloat(yEl.value);
+    if (!Number.isNaN(x) && !Number.isNaN(y)) {
+      const xc = clamp(x, -10, 10);
+      const yc = clamp(y, -10, 10);
+      state.selected = [xc, yc];
+    } else {
+      state.selected = null;
+    }
+    drawQuestionGraph(state.current);
+  });
 
   updateScoreboard();
   initGraph();
